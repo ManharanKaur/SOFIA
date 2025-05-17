@@ -1,0 +1,38 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+
+# VS Code settings (keep settings.json but ignore others)
+.vscode/*
+!.vscode/settings.json
+
+# macOS system files
+.DS_Store
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Jupyter Notebook checkpoints (if any)
+.ipynb_checkpoints/
+
+# Test and coverage outputs
+htmlcov/
+.coverage
+coverage.xml
+.cache
+.env
+nosetests.xml
+pytest_cache/
+
+
+personalnotes.txt
