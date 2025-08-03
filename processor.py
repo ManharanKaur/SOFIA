@@ -1,7 +1,7 @@
 import datetime
 import webbrowser as wb
 import wikipedia
-from support_functions import speak, get_news
+from support_functions import speak, get_news, ask_gemini
 import Music_library as music
 import Webpage_library as page
 
@@ -27,18 +27,9 @@ def process_command(c):
         query = c[6:].strip()
         if query:
             speak(f"Searching for {query}")
-            wb.open(f"https://www.google.com/search?q={query.replace(' ', '+')}")
+            wb.open(f"https://www.google.com/search?q={query.replace(' ','+')}")
         else:
             speak("Please say something to search for.")
-
-    # Wikipedia summary
-    elif c.startswith("who is") or c.startswith("what is") or c.startswith("tell me about"):
-        try:
-            query = c.replace("who is", "").replace("what is", "").replace("tell me about", "").strip()
-            summary = wikipedia.summary(query, sentences=2)
-            speak(summary)
-        except:
-            speak("Sorry, I couldn't find anything on Wikipedia.")
             
     # play a song
     elif c.startswith("play"):
@@ -52,6 +43,11 @@ def process_command(c):
     # give news
     elif "news" in c.lower():
         get_news()
-    
+
+
+    else:
+        gemini_response = ask_gemini(c)
+        print("Sofia:", gemini_response)
+        speak(gemini_response)
 
     return
