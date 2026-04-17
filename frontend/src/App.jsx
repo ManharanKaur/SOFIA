@@ -35,7 +35,7 @@ function App() {
   const speechSynthesisRef = useRef(null);
   const autoResumeAfterSpeechRef = useRef(false);
 
-  const backendBase = 'http://127.0.0.1:8000';
+  const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
   // Keep refs in sync with React state so speech callbacks always get current values.
   useEffect(() => {
