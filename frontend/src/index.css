@@ -1,0 +1,21 @@
+/* index.css */
+:root {
+  --bg-blue-50: #eff6ff;
+  --primary-blue: #2563eb;
+  --text-main: #111827;
+  --text-muted: #6b7280;
+  --white: #ffffff;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-blue-50);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,71 @@
+/*
+  VoiceAssistantOrb styles
+  - Keeps the orb centered
+  - Draws the center dot
+  - Animates ripple waves while thinking
+*/
+
+.voice-orb {
+  /* Center content inside this component area */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* Local sizing so ripples have room to expand */
+  width: 220px;
+  height: 220px;
+  position: relative;
+}
+
+.voice-orb__ripples {
+  /* This layer covers the full orb area for absolute ripple placement */
+  position: absolute;
+  inset: 0;
+}
+
+.voice-orb__ripple {
+  /* Place each ripple exactly in the center */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+
+  /* Ripple circle look */
+  width: 70px;
+  height: 70px;
+  border-radius: 999px;
+  border: 2px solid #3b6cff;
+  opacity: 0;
+
+  /* Smooth continuous wave animation */
+  animation: ripple-wave 2s infinite;
+}
+
+.voice-orb__dot {
+  /* Solid blue center dot */
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: #3b6cff;
+
+  /* Soft glow for depth */
+  box-shadow: 0 0 30px rgba(59, 108, 255, 0.45);
+
+  /* Keep the dot above ripple layers */
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes ripple-wave {
+  /* Start small and slightly visible */
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.45;
+  }
+
+  /* End bigger and transparent */
+  100% {
+    transform: translate(-50%, -50%) scale(2.4);
+    opacity: 0;
+  }
+}
