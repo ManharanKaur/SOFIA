@@ -71,7 +71,7 @@ Sofia/
 ##  Deployment Status
 
 **Live Demo:**
-[https://your-render-link.onrender.com](https://your-render-link.onrender.com)
+[Check Sofia Here!](https://sofia-three-neon.vercel.app/)
 
 ⚠️ **Current Status:**
 Sofia is **not fully deployed yet**. Some features (like AI chat and external API integrations) may not work as expected in the live version.
