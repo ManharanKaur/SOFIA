@@ -67,3 +67,14 @@ Sofia/
 - Ensure your browser supports `speechSynthesis`.
 - Check tab audio and system volume.
 - Refresh once if voices were not loaded yet.
+
+##  Deployment Status
+
+**Live Demo:**
+[https://your-render-link.onrender.com](https://your-render-link.onrender.com)
+
+⚠️ **Current Status:**
+Sofia is **not fully deployed yet**. Some features (like AI chat and external API integrations) may not work as expected in the live version.
+
+**Local Version:**
+The project is fully functional on the local machine, and all features are being tested and integrated before final deployment.
