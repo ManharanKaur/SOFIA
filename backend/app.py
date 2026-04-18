@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Dict
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -46,6 +47,14 @@ class CommandResponse(BaseModel):
     url: str | None = None
 
 
+class RootResponse(BaseModel):
+    """Response shape for the API root endpoint."""
+
+    service: str
+    version: str
+    endpoints: Dict[str, str]
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -66,18 +75,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def root() -> dict[str, str]:
+@app.get("/", response_model=RootResponse)
+def root() -> RootResponse:
     """API documentation and available endpoints."""
-    return {
-        "service": "Sofia AI Assistant",
-        "version": "1.0.0",
-        "endpoints": {
+
+    # The error happened because `dict[str, str]` forced every value to be a string,
+    # but `endpoints` is actually a dictionary.
+    # This model fixes validation by explicitly allowing `endpoints: Dict[str, str]`.
+    return RootResponse(
+        service="Sofia AI Assistant",
+        version="1.0.0",
+        endpoints={
             "command": "POST /api/command",
             "health": "GET /health",
             "docs": "GET /docs",
         },
-    }
+    )
 
 
 @app.get("/health")
