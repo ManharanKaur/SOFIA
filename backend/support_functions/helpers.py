@@ -15,6 +15,7 @@ def _read_env_key(*names: str) -> str:
 
     for name in names:
         value = (os.getenv(name) or "").strip().strip('"').strip("'")
+        logger.debug("Environment variable %s: %s", name, "SET" if value else "NOT SET")
         if value:
             return value
     return ""
@@ -130,7 +131,7 @@ def ask_ai(prompt: str) -> str:
         or fails.
     """
 
-    api_key = _read_env_key("GEMINI_API_KEY", "GOOGLE_API_KEY")
+    api_key = _read_env_key("GEMINI_API_KEY")
     print(f"Debug: Using API key: {api_key}")
     # If no API key is set, return a helpful message.
     if not api_key:
