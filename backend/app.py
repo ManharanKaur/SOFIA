@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict
-
+import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,7 +98,10 @@ def health() -> dict[str, str]:
     """Simple health check for load balancers."""
     return {"status": "ok"}
 
-
+@app.get("/config")
+def config() -> dict[str, str]:
+    """Return env configuration."""
+    return dict(os.environ) 
 
 @app.post("/api/command", response_model=CommandResponse)
 async def command_api(payload: CommandRequest, request: Request) -> CommandResponse:
