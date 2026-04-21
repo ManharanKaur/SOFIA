@@ -3,9 +3,37 @@ from __future__ import annotations
 import logging
 import os
 import webbrowser
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
+
+
+def _load_env_files() -> None:
+    """Load .env files if present so helper modules can resolve API keys reliably."""
+
+    backend_env = Path(__file__).resolve().parents[1] / ".env"
+    root_env = Path(__file__).resolve().parents[2] / ".env"
+
+    if backend_env.exists():
+        load_dotenv(backend_env, override=False)
+    if root_env.exists():
+        load_dotenv(root_env, override=False)
+
+
+def _read_env_key(*names: str) -> str:
+    """Read the first non-empty env value from candidate names."""
+
+    for name in names:
+        value = (os.getenv(name) or "").strip().strip('"').strip("'")
+        if value:
+            return value
+    return ""
+
+
+_load_env_files()
 
 
 # ============================================================================
@@ -118,13 +146,13 @@ def ask_ai(prompt: str) -> str:
         or fails.
     """
 
-    api_key = (os.getenv("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
+    api_key = _read_env_key("GEMINI_API_KEY", "GOOGLE_API_KEY")
     
     # If no API key is set, return a helpful message.
     if not api_key:
         return (
             "AI chat is not configured yet. "
-            "Set the GEMINI_API_KEY environment variable to enable it."
+            "Set the GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable to enable it."
         )
 
     try:
