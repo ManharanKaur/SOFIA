@@ -131,12 +131,13 @@ def ask_ai(prompt: str) -> str:
     """
 
     api_key = _read_env_key("GEMINI_API_KEY", "GOOGLE_API_KEY")
-    
+    print(f"Debug: Using API key: {api_key}")
     # If no API key is set, return a helpful message.
     if not api_key:
         return (
             "AI chat is not configured yet. "
-            "Set the GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable to enable it."
+            "Set the GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable to enable it.",
+            api_key
         )
 
     try:
