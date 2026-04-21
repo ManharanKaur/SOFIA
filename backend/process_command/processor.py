@@ -138,6 +138,8 @@ async def process_text_command(command: str) -> dict[str, Any]:
         return _respond("news", news_response)
 
     # Fallback: unknown commands are handled by the AI assistant.
+    print("No known intent matched, falling back to AI response.")
     ai_prompt = _build_ai_prompt(command.strip())
+    print(f"AI Prompt:\n{ai_prompt}\n")
     ai_answer = ask_ai(ai_prompt)
     return _respond("chat", str(ai_answer))

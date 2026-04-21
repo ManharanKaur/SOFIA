@@ -10,19 +10,6 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-
-def _load_env_files() -> None:
-    """Load .env files if present so helper modules can resolve API keys reliably."""
-
-    backend_env = Path(__file__).resolve().parents[1] / ".env"
-    root_env = Path(__file__).resolve().parents[2] / ".env"
-
-    if backend_env.exists():
-        load_dotenv(backend_env, override=False)
-    if root_env.exists():
-        load_dotenv(root_env, override=False)
-
-
 def _read_env_key(*names: str) -> str:
     """Read the first non-empty env value from candidate names."""
 
@@ -31,9 +18,6 @@ def _read_env_key(*names: str) -> str:
         if value:
             return value
     return ""
-
-
-_load_env_files()
 
 
 # ============================================================================

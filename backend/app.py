@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
+from support_functions.helpers import _read_env_key
 from process_command.processor import process_text_command
 
 # Load environment variables from .env file (if it exists)
@@ -101,7 +101,7 @@ def health() -> dict[str, str]:
 @app.get("/config")
 def config() -> dict[str, str]:
     """Return env configuration."""
-    return dict(os.environ) 
+    return {"GEMINI_API_KEY": _read_env_key("GEMINI_API_KEY")}
 
 @app.post("/api/command", response_model=CommandResponse)
 async def command_api(payload: CommandRequest, request: Request) -> CommandResponse:
