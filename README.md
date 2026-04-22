@@ -68,13 +68,13 @@ Sofia/
 - Check tab audio and system volume.
 - Refresh once if voices were not loaded yet.
 
-##  Deployment Status
+## Deployment Status
 
 **Live Demo:**
 [Check Sofia Here!](https://sofia-three-neon.vercel.app/)
 
 ⚠️ **Current Status:**
-Sofia is **not fully deployed yet**. Some features (like AI chat and external API integrations) may not work as expected in the live version.
+Sofia is **not fully deployed yet**. Some features (like opening browser) may not work as expected in the live version.
 
 **Local Version:**
 The project is fully functional on the local machine, and all features are being tested and integrated before final deployment.
