@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from support_functions.helpers import _read_env_key
 from process_command.processor import process_text_command
 
-# Load environment variables from .env file (if it exists)
 env_file = Path(__file__).parent / ".env"
 if env_file.exists():
     load_dotenv(env_file)
@@ -78,10 +77,6 @@ app.add_middleware(
 @app.get("/", response_model=RootResponse)
 def root() -> RootResponse:
     """API documentation and available endpoints."""
-
-    # The error happened because `dict[str, str]` forced every value to be a string,
-    # but `endpoints` is actually a dictionary.
-    # This model fixes validation by explicitly allowing `endpoints: Dict[str, str]`.
     return RootResponse(
         service="Sofia AI Assistant",
         version="1.0.0",

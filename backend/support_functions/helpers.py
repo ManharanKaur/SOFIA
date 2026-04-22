@@ -19,11 +19,6 @@ def _read_env_key(*names: str) -> str:
             return value
     return ""
 
-
-# ============================================================================
-# PAGE MAP (for "open" command)
-# ============================================================================
-
 def _default_page_map() -> dict[str, str]:
     """Return built-in pages used when no external library is available."""
 
@@ -54,8 +49,6 @@ def _safe_url(url: str) -> str | None:
         )
     )
 
-
-# Try to load optional external page library.
 try:
     import Webpage_library as page_lib  # type: ignore
     _raw_page_map = getattr(page_lib, "page", None)
@@ -111,11 +104,6 @@ def open_url_in_browser(url: str) -> tuple[bool, str]:
         logger.exception("Failed to open browser URL")
         return False, f"Failed to open URL: {exc}"
 
-
-# ============================================================================
-# GOOGLE GEMINI API (for "chat" command and AI responses)
-# ============================================================================
-
 def ask_ai(prompt: str) -> str:
     """
     Send a prompt to Google Gemini API and return the AI response.
@@ -132,7 +120,6 @@ def ask_ai(prompt: str) -> str:
 
     api_key = _read_env_key("GEMINI_API_KEY", "GOOGLE_API_KEY")
     logger.info(f"API Key check: GEMINI_API_KEY={bool(api_key)}, raw key length={len(api_key) if api_key else 0}")
-    # If no API key is set, return a helpful message.
     if not api_key:
         logger.error("API key not configured!")
         return (
@@ -141,8 +128,7 @@ def ask_ai(prompt: str) -> str:
         )
 
     try:
-        # Import the Google Generative AI library.
-        import google.generativeai as genai  # type: ignore
+        import google.generativeai as genai
     except ImportError:
         logger.error("google-generativeai library is not installed")
         return (
@@ -151,10 +137,8 @@ def ask_ai(prompt: str) -> str:
         )
 
     try:
-        # Configure the API with your key.
         genai.configure(api_key=api_key)
-        
-        # Use currently supported Gemini model names, with simple fallback.
+
         candidate_models = [
             "gemini-2.5-flash",
             "gemini-2.0-flash",
@@ -175,11 +159,6 @@ def ask_ai(prompt: str) -> str:
         logger.exception("AI generation failed")
         return f"AI service is temporarily unavailable. Error: {exc}"
 
-
-# ============================================================================
-# NEWS API (for "news" command - optional)
-# ============================================================================
-
 def get_news() -> str:
     """
     Fetch top 5 news headlines from the News API.
@@ -194,7 +173,6 @@ def get_news() -> str:
     api_key = _read_env_key("NEWS_API_KEY")
     print(f"Debug: Using News API key: {api_key}")
 
-    # If no API key is set, return a helpful message.
     if not api_key:
         return (
             "News service is not configured yet. "
@@ -202,7 +180,7 @@ def get_news() -> str:
         )
 
     try:
-        import requests  # type: ignore
+        import requests
     except ImportError:
         logger.error("requests library is not installed")
         return (
@@ -211,33 +189,30 @@ def get_news() -> str:
         )
 
     try:
-        # Fetch top 5 news headlines from India.
         url = "https://newsapi.org/v2/top-headlines"
         params = {
-            "country": "in",  # India
+            "country": "in",
             "pageSize": 5,
             "apiKey": api_key,
         }
-        
+
         response = requests.get(url, params=params, timeout=5)
-        response.raise_for_status()  # Raise error if request failed.
-        
+        response.raise_for_status()
+
         data = response.json()
-        
-        # Check if we got articles.
+
         articles = data.get("articles", [])
         if not articles:
             return "No news articles found."
-        
-        # Format headlines into a readable string.
+
         headlines = []
         for i, article in enumerate(articles, 1):
             title = article.get("title", "No title")
             source = article.get("source", {}).get("name", "Unknown")
             headlines.append(f"{i}. {title} ({source})")
-        
+
         return "Here are the latest headlines:\n\n" + "\n".join(headlines)
-        
+
     except requests.exceptions.Timeout:
         logger.error("News API request timed out")
         return "News service is taking too long. Please try again."

@@ -56,7 +56,6 @@ def _normalize_open_target(target: str) -> str:
     if t.startswith(("http://", "https://")):
         return t
 
-    # Basic domain support, e.g. "youtube.com" -> "https://youtube.com"
     if "." in t and " " not in t:
         return f"https://{t}"
 
@@ -105,7 +104,6 @@ async def process_text_command(command: str) -> dict[str, Any]:
 
     page_map = get_page_map()
 
-    # Intent 1: open known websites.
     open_prefix, page_to_open = _extract_prefixed_argument(c, ("open",))
     if open_prefix is not None:
         if not page_to_open:
@@ -117,7 +115,6 @@ async def process_text_command(command: str) -> dict[str, Any]:
             return _respond("open_url" if ok else "error", message, url=url)
         return _respond("error", f"I cannot find '{page_to_open}' in the page library.")
 
-    # Intent 2: web search.
     search_prefix, query = _extract_prefixed_argument(c, _SEARCH_PREFIXES)
     if search_prefix is not None:
         if not query:
@@ -125,19 +122,16 @@ async def process_text_command(command: str) -> dict[str, Any]:
         search_url = _build_search_url(query)
         return _respond("search", f"Searching for {query}: {search_url}", url=search_url)
 
-    # Intent 3: simulate music play response.
     play_prefix, song = _extract_prefixed_argument(c, ("play",))
     if play_prefix is not None:
         if not song:
             return _respond("error", "Please tell me a song name.")
         return _respond("play_song", f"Playing {song} (simulated).", data={"song": song})
 
-    # Intent 4: fetch news headlines.
     if any(keyword in c for keyword in _NEWS_KEYWORDS):
         news_response = get_news()
         return _respond("news", news_response)
 
-    # Fallback: unknown commands are handled by the AI assistant.
     print("No known intent matched, falling back to AI response.")
     ai_prompt = _build_ai_prompt(command.strip())
     print(f"AI Prompt:\n{ai_prompt}\n")

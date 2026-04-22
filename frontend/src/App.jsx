@@ -23,21 +23,18 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
 
-  // Speech recognition instance and helper refs.
   const recognitionRef = useRef(null);
   const shouldRestartRef = useRef(false);
   const isListeningRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const isSendingRef = useRef(false);
 
-  // Speech synthesis refs.
   const selectedVoiceRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const autoResumeAfterSpeechRef = useRef(false);
 
   const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 
-  // Keep refs in sync with React state so speech callbacks always get current values.
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
@@ -50,7 +47,6 @@ function App() {
     isSendingRef.current = isSending;
   }, [isSending]);
 
-  // Pick a female voice if available (for example Google UK English Female).
   const pickPreferredVoice = (voices) => {
     if (!voices || voices.length === 0) {
       return null;
@@ -82,7 +78,6 @@ function App() {
     return voices.find((voice) => voice.lang?.toLowerCase().startsWith('en')) || voices[0];
   };
 
-  // Start recognition safely.
   const startRecognition = () => {
     const recognition = recognitionRef.current;
     if (!recognition) {
@@ -93,12 +88,10 @@ function App() {
       recognition.start();
       console.log('mic started');
     } catch (error) {
-      // start() can throw if called twice quickly.
       console.log('mic start skipped:', error);
     }
   };
 
-  // Stop recognition safely.
   const stopRecognition = () => {
     const recognition = recognitionRef.current;
     if (!recognition) {
@@ -112,17 +105,14 @@ function App() {
     }
   };
 
-  // Speak Sofia's answer. It pauses mic listening while speaking, then resumes.
   const speakText = (text) => {
     const synth = speechSynthesisRef.current;
     if (!synth || !text) {
       return;
     }
 
-    // Prevent overlapping voice output.
     synth.cancel();
 
-    // Pause listening while assistant speaks to avoid feedback loop.
     autoResumeAfterSpeechRef.current = isListeningRef.current;
     if (autoResumeAfterSpeechRef.current) {
       shouldRestartRef.current = false;
@@ -147,7 +137,6 @@ function App() {
       setIsSpeaking(false);
       console.log('speech ended');
 
-      // Resume continuous listening after speech if mic is still ON.
       if (autoResumeAfterSpeechRef.current && isListeningRef.current) {
         shouldRestartRef.current = true;
         startRecognition();
@@ -167,7 +156,6 @@ function App() {
     synth.speak(utterance);
   };
 
-  // Sends command to backend and handles both text + voice response.
   const processCommand = async (rawCommand) => {
     const command = rawCommand.trim();
     if (!command || isSendingRef.current) {
@@ -201,7 +189,6 @@ function App() {
         }
       }
 
-      // Speak Sofia response automatically.
       speakText(message);
       setStatus('Backend connected');
     } catch {
@@ -216,11 +203,9 @@ function App() {
   };
 
   useEffect(() => {
-    // Browser support check for speech recognition.
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     setMicSupported(!!SpeechRecognition);
 
-    // Speech synthesis setup and voice selection.
     if ('speechSynthesis' in window) {
       speechSynthesisRef.current = window.speechSynthesis;
 
@@ -232,7 +217,6 @@ function App() {
       loadVoices();
       window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
 
-      // Cleanup voices listener.
       return () => {
         window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
       };
@@ -242,7 +226,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Simple backend health check.
     const checkHealth = async () => {
       try {
         const res = await fetch(`${backendBase}/health`);
@@ -259,7 +242,6 @@ function App() {
   }, [backendBase]);
 
   useEffect(() => {
-    // Create recognition instance once, then reuse it while mic is ON.
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       return undefined;
@@ -272,7 +254,6 @@ function App() {
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
-      // Collect only final transcript(s) and process directly.
       let transcript = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
@@ -292,7 +273,6 @@ function App() {
     };
 
     recognition.onend = () => {
-      // Continuous mode: restart mic when user left it ON.
       if (shouldRestartRef.current && isListeningRef.current && !isSpeakingRef.current) {
         setTimeout(() => {
           startRecognition();
@@ -303,7 +283,6 @@ function App() {
     recognition.onerror = (event) => {
       console.log('mic error:', event.error);
 
-      // Permission denied or blocked: stop listening and show friendly message.
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         shouldRestartRef.current = false;
         setIsListening(false);
@@ -311,7 +290,6 @@ function App() {
         return;
       }
 
-      // If mic is ON, keep trying unless permission is denied.
       if (isListeningRef.current && !isSpeakingRef.current) {
         shouldRestartRef.current = true;
       }
@@ -319,7 +297,6 @@ function App() {
 
     recognitionRef.current = recognition;
 
-    // Stop mic and speech when navigating away/unloading page.
     const handlePageExit = () => {
       shouldRestartRef.current = false;
       setIsListening(false);
@@ -358,7 +335,6 @@ function App() {
       return;
     }
 
-    // Turn mic OFF.
     if (isListening) {
       shouldRestartRef.current = false;
       setIsListening(false);
@@ -366,7 +342,6 @@ function App() {
       return;
     }
 
-    // Turn mic ON and start continuous listening.
     shouldRestartRef.current = true;
     setIsListening(true);
     setFullAnswer('Listening...');
@@ -382,7 +357,6 @@ function App() {
   };
 
   useEffect(() => {
-    // Show the response with a simple typewriter effect, like a chat assistant.
     let index = 0;
     setVisibleAnswer('');
 
