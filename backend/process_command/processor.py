@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 MAX_COMMAND_LENGTH = 500
 _SEARCH_PREFIXES = ("search", "google", "look up", "find")
 _NEWS_KEYWORDS = ("news", "headlines", "latest")
+_DATETIME_KEYWORDS = ("time", "date", "day", "month", "year")
 
 
 def _normalize(command: str) -> str:
@@ -72,6 +74,51 @@ def _build_ai_prompt(command: str) -> str:
     )
 
 
+def _has_keyword(command: str, keywords: tuple[str, ...]) -> bool:
+    """Return True when any keyword appears as a standalone word."""
+
+    return any(re.search(rf"\b{re.escape(keyword)}\b", command) for keyword in keywords)
+
+
+def _build_datetime_message(command: str) -> tuple[str, dict[str, str]]:
+    """Build a human-readable date/time response based on requested keywords."""
+
+    now = datetime.now()
+    requested = {
+        "time": _has_keyword(command, ("time",)),
+        "date": _has_keyword(command, ("date",)),
+        "day": _has_keyword(command, ("day",)),
+        "month": _has_keyword(command, ("month",)),
+        "year": _has_keyword(command, ("year",)),
+    }
+
+    details = {
+        "time": now.strftime("%H:%M:%S"),
+        "date": now.strftime("%Y-%m-%d"),
+        "day": now.strftime("%A"),
+        "month": now.strftime("%B"),
+        "year": now.strftime("%Y"),
+    }
+
+    if not any(requested.values()):
+        message = f"Current date and time: {now.strftime('%A, %B %d, %Y at %H:%M:%S')}"
+        return message, details
+
+    segments: list[str] = []
+    if requested["time"]:
+        segments.append(f"Time: {details['time']}")
+    if requested["date"]:
+        segments.append(f"Date: {details['date']}")
+    if requested["day"]:
+        segments.append(f"Day: {details['day']}")
+    if requested["month"]:
+        segments.append(f"Month: {details['month']}")
+    if requested["year"]:
+        segments.append(f"Year: {details['year']}")
+
+    return " | ".join(segments), details
+
+
 def _respond(
     action: str,
     message: str,
@@ -128,6 +175,11 @@ async def process_text_command(command: str) -> dict[str, Any]:
             return _respond("error", "Please tell me a song name.")
         return _respond("play_song", f"Playing {song} (simulated).", data={"song": song})
 
+    if _has_keyword(c, _DATETIME_KEYWORDS):
+        datetime_message, datetime_data = _build_datetime_message(c)
+        return _respond("datetime", datetime_message, data=datetime_data)
+
+    
     if any(keyword in c for keyword in _NEWS_KEYWORDS):
         news_response = get_news()
         return _respond("news", news_response)
