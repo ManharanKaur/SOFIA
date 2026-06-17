@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Literal
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -25,6 +25,9 @@ class CommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     command: str = Field(..., min_length=1, max_length=500)
+
+    history: list["ChatTurn"] = Field(default_factory=list, max_length=20)
+
     @field_validator("command")
     @classmethod
     def normalize_command(cls, value: str) -> str:
@@ -34,6 +37,28 @@ class CommandRequest(BaseModel):
         if not normalized_value:
             raise ValueError("command must not be empty")
         return normalized_value
+
+
+class ChatTurn(BaseModel):
+    """Single conversation turn used to provide chat memory."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        """Trim turn text and reject blank input."""
+
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("content must not be empty")
+        return normalized_value
+
+
+CommandRequest.model_rebuild()
 
 
 class CommandResponse(BaseModel):
@@ -112,7 +137,10 @@ async def command_api(payload: CommandRequest, request: Request) -> CommandRespo
         command,
     )
 
-    result = await process_text_command(command)
+    result = await process_text_command(
+        command,
+        history=[turn.model_dump() for turn in payload.history],
+    )
 
     logger.info(
         "response path=%s client=%s action=%s",

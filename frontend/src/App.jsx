@@ -3,6 +3,73 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceAssistantOrb from './components/VoiceAssistantOrb';
 
+const CHAT_HISTORY_STORAGE_KEY = 'sofia.chatHistory';
+const MAX_CHAT_HISTORY = 12;
+const MAX_HISTORY_TO_SEND = 8;
+
+const initialAssistantMessage = 'HI! I am Sofia, your local AI assistant. Ask me anything or give me a command!';
+
+const loadStoredChatHistory = () => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsedValue = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue
+      .filter((entry) => entry && typeof entry.role === 'string' && typeof entry.content === 'string')
+      .slice(-MAX_CHAT_HISTORY)
+      .map((entry) => ({
+        role: entry.role,
+        content: entry.content,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+const trimChatHistory = (history) => history.slice(-MAX_CHAT_HISTORY);
+
+const BACKEND_HEALTH_PATH = '/health';
+
+const buildBackendCandidates = () => {
+  const candidates = [];
+
+  if (import.meta.env.VITE_BACKEND_URL) {
+    candidates.push(import.meta.env.VITE_BACKEND_URL.replace(/\/$/, ''));
+  }
+
+  if (typeof window !== 'undefined') {
+    candidates.push(window.location.origin);
+  }
+
+  candidates.push('http://127.0.0.1:8000');
+  candidates.push('http://localhost:8000');
+
+  return [...new Set(candidates)];
+};
+
+const probeBackend = async (baseUrl) => {
+  try {
+    const response = await fetch(`${baseUrl}${BACKEND_HEALTH_PATH}`, {
+      method: 'GET',
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
 const MicIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <rect x="9" y="2" width="6" height="12" rx="3" stroke="black" strokeWidth="2"/>
@@ -15,25 +82,57 @@ const MicIcon = () => (
 function App() {
   const [input, setInput] = useState('');
   const [question, setQuestion] = useState('Type a command or use microphone...');
-  const [fullAnswer, setFullAnswer] = useState('HI! I am Sofia, your local AI assistant. Ask me anything or give me a command!');
-  const [visibleAnswer, setVisibleAnswer] = useState('HI! I am Sofia, your local AI assistant. Ask me anything or give me a command!');
-  const [status, setStatus] = useState('Checking backend...');
+  const [fullAnswer, setFullAnswer] = useState(initialAssistantMessage);
+  const [visibleAnswer, setVisibleAnswer] = useState(initialAssistantMessage);
+  const [status, setStatus] = useState('Detecting backend...');
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
+  const [chatHistory, setChatHistory] = useState(() => loadStoredChatHistory());
+  const [backendBase, setBackendBase] = useState(null);
 
   const recognitionRef = useRef(null);
   const shouldRestartRef = useRef(false);
   const isListeningRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const isSendingRef = useRef(false);
+  const hasHydratedHistoryRef = useRef(false);
 
   const selectedVoiceRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const autoResumeAfterSpeechRef = useRef(false);
 
-  const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+  useEffect(() => {
+    if (chatHistory.length === 0) {
+      return;
+    }
+
+    window.localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  useEffect(() => {
+    if (hasHydratedHistoryRef.current) {
+      return;
+    }
+
+    hasHydratedHistoryRef.current = true;
+
+    if (chatHistory.length === 0) {
+      return;
+    }
+
+    const lastUserTurn = [...chatHistory].reverse().find((entry) => entry.role === 'user');
+    const lastAssistantTurn = [...chatHistory].reverse().find((entry) => entry.role === 'assistant');
+
+    if (lastUserTurn) {
+      setQuestion(lastUserTurn.content);
+    }
+
+    if (lastAssistantTurn) {
+      setFullAnswer(lastAssistantTurn.content);
+    }
+  }, [chatHistory]);
 
   useEffect(() => {
     isListeningRef.current = isListening;
@@ -46,6 +145,36 @@ function App() {
   useEffect(() => {
     isSendingRef.current = isSending;
   }, [isSending]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const detectBackend = async () => {
+      setStatus('Detecting backend...');
+
+      for (const candidate of buildBackendCandidates()) {
+        // Probe candidates in order so local development and same-origin hosting work automatically.
+        if (await probeBackend(candidate)) {
+          if (!cancelled) {
+            setBackendBase(candidate);
+            setStatus('Backend connected');
+          }
+          return;
+        }
+      }
+
+      if (!cancelled) {
+        setBackendBase(null);
+        setStatus('Backend offline');
+      }
+    };
+
+    detectBackend();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const pickPreferredVoice = (voices) => {
     if (!voices || voices.length === 0) {
@@ -158,7 +287,7 @@ function App() {
 
   const processCommand = async (rawCommand) => {
     const command = rawCommand.trim();
-    if (!command || isSendingRef.current) {
+    if (!command || isSendingRef.current || !backendBase) {
       return;
     }
 
@@ -166,12 +295,19 @@ function App() {
     setQuestion(command);
 
     try {
+      const historyForBackend = chatHistory
+        .slice(-MAX_HISTORY_TO_SEND)
+        .map((entry) => ({
+          role: entry.role,
+          content: entry.content,
+        }));
+
       const response = await fetch(`${backendBase}/api/command`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ command }),
+        body: JSON.stringify({ command, history: historyForBackend }),
       });
 
       if (!response.ok) {
@@ -182,6 +318,13 @@ function App() {
       const message = data.message || 'No response from backend.';
 
       setFullAnswer(message);
+      setChatHistory((currentHistory) =>
+        trimChatHistory([
+          ...currentHistory,
+          { role: 'user', content: command },
+          { role: 'assistant', content: message },
+        ]),
+      );
 
       if (data.action === 'open_url' || data.action === 'search') {
         if (data.url) {
@@ -194,6 +337,13 @@ function App() {
     } catch {
       const fallbackMessage = 'Could not reach backend. Start the Python server and try again.';
       setFullAnswer(fallbackMessage);
+      setChatHistory((currentHistory) =>
+        trimChatHistory([
+          ...currentHistory,
+          { role: 'user', content: command },
+          { role: 'assistant', content: fallbackMessage },
+        ]),
+      );
       speakText(fallbackMessage);
       setStatus('Backend offline');
     } finally {
@@ -227,8 +377,12 @@ function App() {
 
   useEffect(() => {
     const checkHealth = async () => {
+      if (!backendBase) {
+        return;
+      }
+
       try {
-        const res = await fetch(`${backendBase}/health`);
+        const res = await fetch(`${backendBase}${BACKEND_HEALTH_PATH}`);
         if (!res.ok) {
           throw new Error('Backend unavailable');
         }
@@ -402,6 +556,20 @@ function App() {
             <ReactMarkdown>{visibleAnswer}</ReactMarkdown>
           </div>
         </div>
+
+        {chatHistory.length > 0 && (
+          <section className="chat-history" aria-label="Conversation memory">
+            <div className="chat-history__header">Conversation memory</div>
+            <div className="chat-history__list">
+              {chatHistory.slice(-6).map((entry, index) => (
+                <article key={`${entry.role}-${index}-${entry.content}`} className={`chat-history__item chat-history__item--${entry.role}`}>
+                  <span className="chat-history__role">{entry.role === 'user' ? 'You' : 'Sofia'}</span>
+                  <p className="chat-history__content">{entry.content}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <footer className="search-section">

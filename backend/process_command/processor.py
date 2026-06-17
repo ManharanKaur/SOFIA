@@ -74,6 +74,40 @@ def _build_ai_prompt(command: str) -> str:
     )
 
 
+def _build_ai_prompt_with_history(
+    command: str,
+    history: list[dict[str, Any]] | None = None,
+) -> str:
+    """Create a prompt that includes recent chat memory for context."""
+
+    recent_history = [entry for entry in (history or []) if entry.get("content")]
+    recent_history = recent_history[-10:]
+
+    prompt_parts = [
+        "You are Sofia, a helpful and friendly AI assistant.",
+        "Use the conversation memory below when it is relevant.",
+        "Keep replies concise, accurate, and natural.",
+        "",
+    ]
+
+    if recent_history:
+        prompt_parts.append("Conversation memory:")
+        for entry in recent_history:
+            role = str(entry.get("role", "user")).strip().lower()
+            content = str(entry.get("content", "")).strip()
+            speaker = "User" if role == "user" else "Sofia"
+            prompt_parts.append(f"{speaker}: {content}")
+        prompt_parts.append("")
+
+    prompt_parts.extend([
+        "Current user request:",
+        command.strip(),
+        "",
+        "Respond naturally and helpfully.",
+    ])
+    return "\n".join(prompt_parts)
+
+
 def _has_keyword(command: str, keywords: tuple[str, ...]) -> bool:
     """Return True when any keyword appears as a standalone word."""
 
@@ -137,7 +171,7 @@ def _respond(
     return response
 
 
-async def process_text_command(command: str) -> dict[str, Any]:
+async def process_text_command(command: str, history: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Process a natural-language command and return a structured response."""
 
     c = _validate_command(command)
@@ -185,7 +219,7 @@ async def process_text_command(command: str) -> dict[str, Any]:
         return _respond("news", news_response)
 
     print("No known intent matched, falling back to AI response.")
-    ai_prompt = _build_ai_prompt(command.strip())
+    ai_prompt = _build_ai_prompt_with_history(command.strip(), history)
     print(f"AI Prompt:\n{ai_prompt}\n")
     ai_answer = ask_ai(ai_prompt)
     return _respond("chat", str(ai_answer))
