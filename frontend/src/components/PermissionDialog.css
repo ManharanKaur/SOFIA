@@ -1,0 +1,191 @@
+/*
+ * PermissionDialog.css
+ * --------------------
+ * BEM styles for the PermissionDialog component.
+ * Uses glassmorphism aesthetics and smooth slide-in animation.
+ * No inline CSS used anywhere.
+ */
+
+/* ── Overlay ────────────────────────────────────────────────────────────── */
+
+.permission-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  animation: permission-dialog-overlay-in 0.2s ease forwards;
+}
+
+/* ── Block: dialog ──────────────────────────────────────────────────────── */
+
+.permission-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: 90%;
+  max-width: 420px;
+  height: fit-content;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 24px;
+  padding: 0;
+  box-shadow:
+    0 32px 80px rgba(15, 23, 42, 0.18),
+    0 8px 24px rgba(15, 23, 42, 0.08);
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  animation: permission-dialog-slide-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  backdrop-filter: blur(20px);
+}
+
+/* ── Element: header ────────────────────────────────────────────────────── */
+
+.permission-dialog__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 28px 0;
+}
+
+.permission-dialog__icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.permission-dialog__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+/* ── Element: body ──────────────────────────────────────────────────────── */
+
+.permission-dialog__body {
+  padding: 16px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.permission-dialog__prompt {
+  font-size: 15px;
+  color: #1e293b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.permission-dialog__permission-label {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.permission-dialog__description {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 0;
+}
+
+/* ── Element: remember checkbox ─────────────────────────────────────────── */
+
+.permission-dialog__remember-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.permission-dialog__remember-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.permission-dialog__remember-text {
+  font-size: 13px;
+  color: #64748b;
+  user-select: none;
+}
+
+/* ── Element: footer ────────────────────────────────────────────────────── */
+
+.permission-dialog__footer {
+  display: flex;
+  gap: 10px;
+  padding: 0 28px 24px;
+  justify-content: flex-end;
+}
+
+/* ── Element: buttons ───────────────────────────────────────────────────── */
+
+.permission-dialog__btn {
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  letter-spacing: 0.01em;
+}
+
+.permission-dialog__btn:active {
+  transform: scale(0.97);
+}
+
+.permission-dialog__btn--deny {
+  background-color: #f1f5f9;
+  color: #475569;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.permission-dialog__btn--deny:hover {
+  background-color: #e2e8f0;
+}
+
+.permission-dialog__btn--allow {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #ffffff;
+  box-shadow:
+    0 4px 14px rgba(37, 99, 235, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.permission-dialog__btn--allow:hover {
+  box-shadow:
+    0 6px 20px rgba(37, 99, 235, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes permission-dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes permission-dialog-slide-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}

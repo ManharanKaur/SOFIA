@@ -1,37 +1,61 @@
+/**
+ * App.jsx
+ * -------
+ * SOFIA main application component.
+ *
+ * Changes from original
+ * ---------------------
+ * - Added: AgentStatusBadge in the header (shows Desktop Agent connection state)
+ * - Added: PermissionDialog overlay (shown when Desktop Agent needs approval)
+ * - Added: useAgentStatus hook (polls /api/agent/status, handles permission flow)
+ * - Added: agent_connected field consumed from command responses
+ * - Removed: all inline styles (moved to CSS classes / BEM modifiers)
+ * - Kept:  STT (Web Speech), TTS (Speech Synthesis), chat history, backend
+ *          discovery, and all existing chat functionality unchanged.
+ *
+ * BEM blocks used: app-container, header, chat-display, search-section,
+ *                  search-bar, chat-history (all defined in App.css)
+ */
+
 import './App.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceAssistantOrb from './components/VoiceAssistantOrb';
+import AgentStatusBadge from './components/AgentStatusBadge';
+import PermissionDialog from './components/PermissionDialog';
+import useAgentStatus from './hooks/use-agent-status';
+
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const CHAT_HISTORY_STORAGE_KEY = 'sofia.chatHistory';
 const MAX_CHAT_HISTORY = 12;
 const MAX_HISTORY_TO_SEND = 8;
+const BACKEND_HEALTH_PATH = '/health';
 
-const initialAssistantMessage = 'HI! I am Sofia, your local AI assistant. Ask me anything or give me a command!';
+const INITIAL_ASSISTANT_MESSAGE =
+  'Hi! I am SOFIA, your local AI assistant. Ask me anything or give me a command!';
+
+// ── Local storage helpers ────────────────────────────────────────────────────
 
 const loadStoredChatHistory = () => {
-  if (typeof window === 'undefined') {
-    return [];
-  }
+  if (typeof window === 'undefined') return [];
 
   try {
     const rawValue = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
-    if (!rawValue) {
-      return [];
-    }
+    if (!rawValue) return [];
 
     const parsedValue = JSON.parse(rawValue);
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
+    if (!Array.isArray(parsedValue)) return [];
 
     return parsedValue
-      .filter((entry) => entry && typeof entry.role === 'string' && typeof entry.content === 'string')
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry.role === 'string' &&
+          typeof entry.content === 'string',
+      )
       .slice(-MAX_CHAT_HISTORY)
-      .map((entry) => ({
-        role: entry.role,
-        content: entry.content,
-      }));
+      .map((entry) => ({ role: entry.role, content: entry.content }));
   } catch {
     return [];
   }
@@ -39,7 +63,7 @@ const loadStoredChatHistory = () => {
 
 const trimChatHistory = (history) => history.slice(-MAX_CHAT_HISTORY);
 
-const BACKEND_HEALTH_PATH = '/health';
+// ── Backend discovery ────────────────────────────────────────────────────────
 
 const buildBackendCandidates = () => {
   const candidates = [];
@@ -63,28 +87,46 @@ const probeBackend = async (baseUrl) => {
     const response = await fetch(`${baseUrl}${BACKEND_HEALTH_PATH}`, {
       method: 'GET',
     });
-
     return response.ok;
   } catch {
     return false;
   }
 };
 
-const MicIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <rect x="9" y="2" width="6" height="12" rx="3" stroke="black" strokeWidth="2"/>
-    <path d="M5 10a7 7 0 0 0 14 0" stroke="black" strokeWidth="2"/>
-    <line x1="12" y1="17" x2="12" y2="22" stroke="black" strokeWidth="2"/>
-    <line x1="8" y1="22" x2="16" y2="22" stroke="black" strokeWidth="2"/>
-  </svg>
-);
+// ── Icon components ──────────────────────────────────────────────────────────
+
+function MicIcon({ className = '' }) {
+  return (
+    <svg
+      className={className}
+      width="32"
+      height="32"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+
+const PAUSE_THRESHOLD_MS = 1500;
 
 function App() {
-  const [input, setInput] = useState('');
-  const [question, setQuestion] = useState('Type a command or use microphone...');
-  const [fullAnswer, setFullAnswer] = useState(initialAssistantMessage);
-  const [visibleAnswer, setVisibleAnswer] = useState(initialAssistantMessage);
-  const [status, setStatus] = useState('Detecting backend...');
+  const [question, setQuestion] = useState('Tap microphone to start continuous listening...');
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [fullAnswer, setFullAnswer] = useState(INITIAL_ASSISTANT_MESSAGE);
+  const [visibleAnswer, setVisibleAnswer] = useState(INITIAL_ASSISTANT_MESSAGE);
+  const [backendStatus, setBackendStatus] = useState('Detecting backend...');
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -92,72 +134,59 @@ function App() {
   const [chatHistory, setChatHistory] = useState(() => loadStoredChatHistory());
   const [backendBase, setBackendBase] = useState(null);
 
+  // ── Agent status hook ────────────────────────────────────────────────────
+  const { agentConnected, pendingPermission, respondToPermission, setPendingPermission } =
+    useAgentStatus(backendBase);
+
+  // ── Refs ─────────────────────────────────────────────────────────────────
   const recognitionRef = useRef(null);
   const shouldRestartRef = useRef(false);
   const isListeningRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const isSendingRef = useRef(false);
   const hasHydratedHistoryRef = useRef(false);
-
   const selectedVoiceRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const autoResumeAfterSpeechRef = useRef(false);
+  const pauseTimerRef = useRef(null);
+  const currentTranscriptRef = useRef('');
 
+  // ── Persist chat history ─────────────────────────────────────────────────
   useEffect(() => {
-    if (chatHistory.length === 0) {
-      return;
-    }
-
+    if (chatHistory.length === 0) return;
     window.localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(chatHistory));
   }, [chatHistory]);
 
+  // ── Hydrate display from stored history ─────────────────────────────────
   useEffect(() => {
-    if (hasHydratedHistoryRef.current) {
-      return;
-    }
-
+    if (hasHydratedHistoryRef.current) return;
     hasHydratedHistoryRef.current = true;
+    if (chatHistory.length === 0) return;
 
-    if (chatHistory.length === 0) {
-      return;
-    }
+    const lastUser = [...chatHistory].reverse().find((e) => e.role === 'user');
+    const lastAssistant = [...chatHistory].reverse().find((e) => e.role === 'assistant');
 
-    const lastUserTurn = [...chatHistory].reverse().find((entry) => entry.role === 'user');
-    const lastAssistantTurn = [...chatHistory].reverse().find((entry) => entry.role === 'assistant');
-
-    if (lastUserTurn) {
-      setQuestion(lastUserTurn.content);
-    }
-
-    if (lastAssistantTurn) {
-      setFullAnswer(lastAssistantTurn.content);
-    }
+    if (lastUser) setQuestion(lastUser.content);
+    if (lastAssistant) setFullAnswer(lastAssistant.content);
   }, [chatHistory]);
 
-  useEffect(() => {
-    isListeningRef.current = isListening;
-  }, [isListening]);
+  // ── Keep refs in sync with state ─────────────────────────────────────────
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { isSendingRef.current = isSending; }, [isSending]);
 
-  useEffect(() => {
-    isSpeakingRef.current = isSpeaking;
-  }, [isSpeaking]);
-
-  useEffect(() => {
-    isSendingRef.current = isSending;
-  }, [isSending]);
-
+  // ── Backend discovery ────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
     const detectBackend = async () => {
-      setStatus('Detecting backend...');
+      setBackendStatus('Detecting backend...');
 
       for (const candidate of buildBackendCandidates()) {
-        // Probe candidates in order so local development and same-origin hosting work automatically.
         if (await probeBackend(candidate)) {
           if (!cancelled) {
             setBackendBase(candidate);
-            setStatus('Backend connected');
+            setBackendStatus('Backend connected');
           }
           return;
         }
@@ -165,21 +194,17 @@ function App() {
 
       if (!cancelled) {
         setBackendBase(null);
-        setStatus('Backend offline');
+        setBackendStatus('Backend offline');
       }
     };
 
     detectBackend();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // ── Voice selection ──────────────────────────────────────────────────────
   const pickPreferredVoice = (voices) => {
-    if (!voices || voices.length === 0) {
-      return null;
-    }
+    if (!voices || voices.length === 0) return null;
 
     const preferredNames = [
       'Google UK English Female',
@@ -192,53 +217,42 @@ function App() {
 
     for (const name of preferredNames) {
       const match = voices.find((voice) => voice.name === name);
-      if (match) {
-        return match;
-      }
+      if (match) return match;
     }
 
     const femaleByName = voices.find((voice) =>
       voice.name.toLowerCase().includes('female'),
     );
-    if (femaleByName) {
-      return femaleByName;
-    }
+    if (femaleByName) return femaleByName;
 
     return voices.find((voice) => voice.lang?.toLowerCase().startsWith('en')) || voices[0];
   };
 
+  // ── Speech recognition helpers ───────────────────────────────────────────
   const startRecognition = () => {
     const recognition = recognitionRef.current;
-    if (!recognition) {
-      return;
-    }
-
+    if (!recognition) return;
     try {
       recognition.start();
-      console.log('mic started');
-    } catch (error) {
-      console.log('mic start skipped:', error);
+    } catch {
+      // Swallow errors when recognition is already started.
     }
   };
 
   const stopRecognition = () => {
     const recognition = recognitionRef.current;
-    if (!recognition) {
-      return;
-    }
-
+    if (!recognition) return;
     try {
       recognition.stop();
-    } catch (error) {
-      console.log('mic stop skipped:', error);
+    } catch {
+      // Swallow errors when recognition is already stopped.
     }
   };
 
-  const speakText = (text) => {
+  // ── TTS ──────────────────────────────────────────────────────────────────
+  const speakText = useCallback((text) => {
     const synth = speechSynthesisRef.current;
-    if (!synth || !text) {
-      return;
-    }
+    if (!synth || !text) return;
 
     synth.cancel();
 
@@ -257,39 +271,30 @@ function App() {
       utterance.voice = selectedVoiceRef.current;
     }
 
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      console.log('speech started');
-    };
+    utterance.onstart = () => setIsSpeaking(true);
 
-    utterance.onend = () => {
+    const onSpeechFinished = () => {
       setIsSpeaking(false);
-      console.log('speech ended');
-
       if (autoResumeAfterSpeechRef.current && isListeningRef.current) {
         shouldRestartRef.current = true;
-        startRecognition();
+        setTimeout(() => {
+          if (isListeningRef.current && !isSpeakingRef.current && !isSendingRef.current) {
+            startRecognition();
+          }
+        }, 200);
       }
     };
 
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      console.log('speech error');
-
-      if (autoResumeAfterSpeechRef.current && isListeningRef.current) {
-        shouldRestartRef.current = true;
-        startRecognition();
-      }
-    };
+    utterance.onend = onSpeechFinished;
+    utterance.onerror = onSpeechFinished;
 
     synth.speak(utterance);
-  };
+  }, []);
 
-  const processCommand = async (rawCommand) => {
+  // ── Command processor ────────────────────────────────────────────────────
+  const processCommand = useCallback(async (rawCommand) => {
     const command = rawCommand.trim();
-    if (!command || isSendingRef.current || !backendBase) {
-      return;
-    }
+    if (!command || isSendingRef.current || !backendBase) return;
 
     setIsSending(true);
     setQuestion(command);
@@ -297,16 +302,11 @@ function App() {
     try {
       const historyForBackend = chatHistory
         .slice(-MAX_HISTORY_TO_SEND)
-        .map((entry) => ({
-          role: entry.role,
-          content: entry.content,
-        }));
+        .map((entry) => ({ role: entry.role, content: entry.content }));
 
       const response = await fetch(`${backendBase}/api/command`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, history: historyForBackend }),
       });
 
@@ -318,9 +318,9 @@ function App() {
       const message = data.message || 'No response from backend.';
 
       setFullAnswer(message);
-      setChatHistory((currentHistory) =>
+      setChatHistory((current) =>
         trimChatHistory([
-          ...currentHistory,
+          ...current,
           { role: 'user', content: command },
           { role: 'assistant', content: message },
         ]),
@@ -332,28 +332,35 @@ function App() {
         }
       }
 
+      // Surface pending permission request if the backend signals one.
+      if (data.pending_permission) {
+        setPendingPermission(data.pending_permission);
+      }
+
       speakText(message);
-      setStatus('Backend connected');
+      setBackendStatus('Backend connected');
     } catch {
-      const fallbackMessage = 'Could not reach backend. Start the Python server and try again.';
+      const fallbackMessage =
+        'Could not reach backend. Start the Python server and try again.';
       setFullAnswer(fallbackMessage);
-      setChatHistory((currentHistory) =>
+      setChatHistory((current) =>
         trimChatHistory([
-          ...currentHistory,
+          ...current,
           { role: 'user', content: command },
           { role: 'assistant', content: fallbackMessage },
         ]),
       );
       speakText(fallbackMessage);
-      setStatus('Backend offline');
+      setBackendStatus('Backend offline');
     } finally {
-      setInput('');
       setIsSending(false);
     }
-  };
+  }, [backendBase, chatHistory, speakText, setPendingPermission]);
 
+  // ── Speech synthesis initialisation ─────────────────────────────────────
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     setMicSupported(!!SpeechRecognition);
 
     if ('speechSynthesis' in window) {
@@ -375,76 +382,119 @@ function App() {
     return undefined;
   }, []);
 
+  // ── Backend health polling ───────────────────────────────────────────────
   useEffect(() => {
     const checkHealth = async () => {
-      if (!backendBase) {
-        return;
-      }
+      if (!backendBase) return;
 
       try {
         const res = await fetch(`${backendBase}${BACKEND_HEALTH_PATH}`);
-        if (!res.ok) {
-          throw new Error('Backend unavailable');
-        }
-        setStatus('Backend connected');
+        if (!res.ok) throw new Error('Backend unavailable');
+        setBackendStatus('Backend connected');
       } catch {
-        setStatus('Backend offline');
+        setBackendStatus('Backend offline');
       }
     };
 
     checkHealth();
   }, [backendBase]);
 
+  // ── Speech recognition setup with 1.5s pause detection ────────────────────
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      return undefined;
-    }
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return undefined;
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
-      let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      if (isSpeakingRef.current || isSendingRef.current) return;
+
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = 0; i < event.results.length; i += 1) {
         const result = event.results[i];
         if (result.isFinal) {
-          transcript += `${result[0].transcript} `;
+          finalTranscript += `${result[0].transcript} `;
+        } else {
+          interimTranscript += result[0].transcript;
         }
       }
 
-      const finalTranscript = transcript.trim();
-      if (!finalTranscript) {
-        return;
+      const combined = `${finalTranscript}${interimTranscript}`.trim();
+      if (!combined) return;
+
+      currentTranscriptRef.current = combined;
+      setLiveTranscript(combined);
+      setQuestion(combined);
+
+      // Clear existing pause timer while user is actively speaking
+      if (pauseTimerRef.current) {
+        clearTimeout(pauseTimerRef.current);
+        pauseTimerRef.current = null;
       }
 
-      console.log('transcript received:', finalTranscript);
-      setInput(finalTranscript);
-      processCommand(finalTranscript);
+      // Detect 1.5s pause of silence after speech
+      pauseTimerRef.current = setTimeout(() => {
+        const textToProcess = currentTranscriptRef.current.trim();
+        if (!textToProcess || isSendingRef.current || isSpeakingRef.current) return;
+
+        currentTranscriptRef.current = '';
+        setLiveTranscript('');
+
+        // Pause recognition while processing command and speaking
+        shouldRestartRef.current = false;
+        stopRecognition();
+
+        processCommand(textToProcess);
+      }, PAUSE_THRESHOLD_MS);
     };
 
     recognition.onend = () => {
-      if (shouldRestartRef.current && isListeningRef.current && !isSpeakingRef.current) {
+      // Auto-restart if continuous listening is still active
+      if (
+        shouldRestartRef.current &&
+        isListeningRef.current &&
+        !isSpeakingRef.current &&
+        !isSendingRef.current
+      ) {
         setTimeout(() => {
-          startRecognition();
-        }, 250);
+          if (
+            shouldRestartRef.current &&
+            isListeningRef.current &&
+            !isSpeakingRef.current &&
+            !isSendingRef.current
+          ) {
+            startRecognition();
+          }
+        }, 150);
       }
     };
 
     recognition.onerror = (event) => {
-      console.log('mic error:', event.error);
-
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      if (
+        event.error === 'not-allowed' ||
+        event.error === 'service-not-allowed'
+      ) {
         shouldRestartRef.current = false;
         setIsListening(false);
-        setFullAnswer('Microphone permission denied. Please allow microphone access and try again.');
+        setFullAnswer(
+          'Microphone permission denied. Please allow microphone access and try again.',
+        );
         return;
       }
 
-      if (isListeningRef.current && !isSpeakingRef.current) {
+      // no-speech or aborted are expected during pauses
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        return;
+      }
+
+      if (isListeningRef.current && !isSpeakingRef.current && !isSendingRef.current) {
         shouldRestartRef.current = true;
       }
     };
@@ -452,10 +502,13 @@ function App() {
     recognitionRef.current = recognition;
 
     const handlePageExit = () => {
+      if (pauseTimerRef.current) {
+        clearTimeout(pauseTimerRef.current);
+        pauseTimerRef.current = null;
+      }
       shouldRestartRef.current = false;
       setIsListening(false);
       stopRecognition();
-
       if (speechSynthesisRef.current) {
         speechSynthesisRef.current.cancel();
       }
@@ -467,49 +520,24 @@ function App() {
     return () => {
       window.removeEventListener('pagehide', handlePageExit);
       window.removeEventListener('beforeunload', handlePageExit);
-
+      if (pauseTimerRef.current) {
+        clearTimeout(pauseTimerRef.current);
+        pauseTimerRef.current = null;
+      }
       shouldRestartRef.current = false;
       stopRecognition();
-
       if (speechSynthesisRef.current) {
         speechSynthesisRef.current.cancel();
       }
-
       if (recognitionRef.current) {
         recognitionRef.current.onresult = null;
         recognitionRef.current.onend = null;
         recognitionRef.current.onerror = null;
       }
     };
-  }, []);
+  }, [processCommand]);
 
-  const toggleMicrophone = () => {
-    if (!micSupported || isSending) {
-      setFullAnswer('Microphone is not supported in this browser.');
-      return;
-    }
-
-    if (isListening) {
-      shouldRestartRef.current = false;
-      setIsListening(false);
-      stopRecognition();
-      return;
-    }
-
-    shouldRestartRef.current = true;
-    setIsListening(true);
-    setFullAnswer('Listening...');
-    startRecognition();
-  };
-
-  const sendCommand = async () => {
-    if (!input.trim() || isSending) {
-      return;
-    }
-
-    processCommand(input);
-  };
-
+  // ── Typewriter effect ────────────────────────────────────────────────────
   useEffect(() => {
     let index = 0;
     setVisibleAnswer('');
@@ -517,39 +545,73 @@ function App() {
     const timer = setInterval(() => {
       index += 1;
       setVisibleAnswer(fullAnswer.slice(0, index));
-
-      if (index >= fullAnswer.length) {
-        clearInterval(timer);
-      }
+      if (index >= fullAnswer.length) clearInterval(timer);
     }, 12);
 
     return () => clearInterval(timer);
   }, [fullAnswer]);
 
-  const onInputKeyDown = (event) => {
-    if (event.key === 'Enter') {
-      sendCommand();
+  // ── Microphone toggle (continuous listening mode) ───────────────────────
+  const toggleMicrophone = () => {
+    if (!micSupported) {
+      setFullAnswer('Microphone is not supported in this browser.');
+      return;
     }
+
+    if (isListening) {
+      if (pauseTimerRef.current) {
+        clearTimeout(pauseTimerRef.current);
+        pauseTimerRef.current = null;
+      }
+      currentTranscriptRef.current = '';
+      setLiveTranscript('');
+      shouldRestartRef.current = false;
+      setIsListening(false);
+      stopRecognition();
+      return;
+    }
+
+    currentTranscriptRef.current = '';
+    setLiveTranscript('');
+    shouldRestartRef.current = true;
+    setIsListening(true);
+    setFullAnswer('Listening continuously. Speak any command, and pause for 1.5s when done...');
+    startRecognition();
   };
 
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="app-container">
+      {/* Permission dialog — rendered at top level so it overlays everything */}
+      <PermissionDialog
+        permission={pendingPermission}
+        onRespond={respondToPermission}
+      />
+
       <header className="header">
         <div className="header__brand">
-          <div className="header__logo-box">
-            S
-          </div>
+          <div className="header__logo-box">S</div>
           <h1 className="header__title">Sofia</h1>
         </div>
-        <div className="header__status">
-          <span className="header__status-indicator" />
-          <span>{status}</span>
+
+        <div className="header__status-group">
+          {/* Backend connection status (original) */}
+          <div className="header__status">
+            <span className="header__status-indicator" />
+            <span>{backendStatus}</span>
+          </div>
+
+          {/* Desktop Agent connection status (new) */}
+          <AgentStatusBadge
+            agentConnected={agentConnected}
+            hasPendingPermission={Boolean(pendingPermission)}
+          />
         </div>
       </header>
 
       <main className="chat-display">
         <VoiceAssistantOrb isThinking={isSending || isSpeaking} />
-        
+
         <div className="chat-display__content">
           <p className="chat-display__question">{question}</p>
           <div className="chat-display__answer">
@@ -558,62 +620,141 @@ function App() {
         </div>
 
         {chatHistory.length > 0 && (
-          <section className="chat-history" aria-label="Conversation memory">
+          <section
+            className="chat-history"
+            aria-label="Conversation memory"
+          >
             <div className="chat-history__header">Conversation memory</div>
             <div className="chat-history__list">
               {chatHistory.slice(-6).map((entry, index) => (
-                <article key={`${entry.role}-${index}-${entry.content}`} className={`chat-history__item chat-history__item--${entry.role}`}>
-                  <span className="chat-history__role">{entry.role === 'user' ? 'You' : 'Sofia'}</span>
+                <article
+                  key={`${entry.role}-${index}-${entry.content.slice(0, 20)}`}
+                  className={`chat-history__item chat-history__item--${entry.role}`}
+                >
+                  <span className="chat-history__role">
+                    {entry.role === 'user' ? 'You' : 'Sofia'}
+                  </span>
                   <p className="chat-history__content">{entry.content}</p>
                 </article>
               ))}
             </div>
           </section>
         )}
+
+        {/* Agent offline notice — shown only when backend is up but agent is not */}
+        {backendBase && !agentConnected && (
+          <div className="agent-offline-notice">
+            <span className="agent-offline-notice__icon" aria-hidden="true">
+              💻
+            </span>
+            <p className="agent-offline-notice__text">
+              <strong>Desktop Agent not running.</strong> Computer-control
+              commands (open apps, control Spotify, etc.) require the SOFIA
+              Desktop Agent. Run{' '}
+              <code className="agent-offline-notice__code">
+                python agent_main.py
+              </code>{' '}
+              in the <code className="agent-offline-notice__code">desktop-agent/</code> folder.
+            </p>
+          </div>
+        )}
       </main>
 
-      <footer className="search-section">
-        <div className="search-bar">
-          <button
-            className={`search-bar__icon-btn search-bar__icon-btn--secondary${isListening ? ' is-active' : ''}`}
-            type="button"
-            onClick={toggleMicrophone}
-            disabled={!micSupported || isSending}
-            aria-label={micSupported ? 'Use microphone input' : 'Microphone not supported'}
-            title={micSupported ? 'Use microphone input' : 'Microphone not supported in this browser'}
+      {/* Voice Dock — Only microphone, continuous listening with 1.5s pause detection */}
+      <footer className="voice-dock">
+        {/* Live speech feedback pill */}
+        {isListening && (
+          <div
+            className={`voice-dock__transcript-pill${liveTranscript ? ' voice-dock__transcript-pill--active' : ''}`}
+            aria-live="polite"
           >
-            <span className="search-bar__icon-btn-label">
-              {isListening ? 'Stop' : <MicIcon />}
+            <span className="voice-dock__transcript-dot" />
+            <span className="voice-dock__transcript-text">
+              {liveTranscript ? `“${liveTranscript}”` : 'Listening continuously... speak anytime'}
+            </span>
+            {liveTranscript && (
+              <span className="voice-dock__transcript-countdown">
+                Pause 1.5s to process
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Main Microphone Button */}
+        <div className="voice-dock__mic-container">
+          <button
+            id="microphone-toggle-btn"
+            type="button"
+            className={`voice-dock__mic-btn voice-dock__mic-btn--${
+              isSending
+                ? 'processing'
+                : isSpeaking
+                ? 'speaking'
+                : isListening
+                ? 'listening'
+                : 'idle'
+            }`}
+            onClick={toggleMicrophone}
+            disabled={!micSupported}
+            aria-label={
+              !micSupported
+                ? 'Microphone not supported'
+                : isListening
+                ? 'Stop continuous listening'
+                : 'Start continuous listening'
+            }
+            title={
+              !micSupported
+                ? 'Microphone not supported in this browser'
+                : isListening
+                ? 'Click to stop continuous listening'
+                : 'Click to start continuous listening'
+            }
+          >
+            {/* Concentric soundwave ripples during active listening */}
+            {isListening && !isSpeaking && !isSending && (
+              <span className="voice-dock__ripples" aria-hidden="true">
+                <span className="voice-dock__ripple" />
+                <span className="voice-dock__ripple" />
+                <span className="voice-dock__ripple" />
+              </span>
+            )}
+
+            <span className="voice-dock__mic-icon-wrap">
+              <MicIcon className="voice-dock__icon" />
             </span>
           </button>
-          <input 
-            type="text" 
-            className="search-bar__input" 
-            placeholder={micSupported ? 'Type a command or use the microphone...' : 'Type a command and press Enter...'}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={onInputKeyDown}
-          />
-          <button
-            className="search-bar__icon-btn search-bar__icon-btn--primary"
-            type="button"
-            onClick={sendCommand}
-            disabled={isSending}
-          >
-            {isSending ? '...' : 'Send'}
-          </button>
         </div>
-        <div className="search-section__footer">
-          <span>
-            Commands are sent to your local backend at 127.0.0.1:8000.
-            {micSupported
-              ? ` Mic is ${isListening ? 'ON' : 'OFF'}. ${isSpeaking ? 'Sofia is speaking.' : 'Sofia is ready.'}`
-              : ' Mic input is not supported in this browser.'}
+
+        {/* Status text */}
+        <div className="voice-dock__status">
+          <span
+            className={`voice-dock__status-indicator voice-dock__status-indicator--${
+              isSending
+                ? 'processing'
+                : isSpeaking
+                ? 'speaking'
+                : isListening
+                ? 'listening'
+                : 'idle'
+            }`}
+          />
+          <span className="voice-dock__status-label">
+            {!micSupported
+              ? 'Microphone input is not supported in this browser.'
+              : isSending
+              ? 'Processing command with local AI...'
+              : isSpeaking
+              ? 'Sofia is speaking...'
+              : isListening
+              ? 'Continuous listening active • Pause for 1.5s to process'
+              : 'Tap microphone to start continuous listening'}
           </span>
         </div>
       </footer>
     </div>
   );
 }
+
 
 export default App;

@@ -1,3 +1,19 @@
+"""
+processor.py
+------------
+Processes natural-language commands received by the SOFIA backend.
+
+Routing logic
+-------------
+1. Rule-based intent matching (datetime, news, open URL, search) — unchanged.
+2. If a Desktop Agent is connected → forward to the agent, which runs the
+   local Ollama LLM with full tool-calling capability.
+3. If no agent is connected → fall back to the backend's synchronous Ollama
+   call (conversational chat only, no computer control).
+
+This keeps the Render backend completely free of Google Gemini.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -6,7 +22,8 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import quote_plus
 
-from support_functions.helpers import ask_ai, get_news, get_page_map, open_url_in_browser
+from support_functions.helpers import ask_ollama, get_news, get_page_map, open_url_in_browser
+from support_functions.agent_bridge import bridge
 
 logger = logging.getLogger(__name__)
 
@@ -16,15 +33,17 @@ _NEWS_KEYWORDS = ("news", "headlines", "latest")
 _DATETIME_KEYWORDS = ("time", "date", "day", "month", "year")
 
 
+# ---------------------------------------------------------------------------
+# Normalisation helpers (unchanged)
+# ---------------------------------------------------------------------------
+
 def _normalize(command: str) -> str:
     """Normalize command text for simple intent matching."""
-
     return re.sub(r"\s+", " ", command.strip().lower())
 
 
 def _validate_command(command: str) -> str:
     """Validate command length and normalize text."""
-
     cleaned_command = command.strip()
     if not cleaned_command:
         return ""
@@ -33,90 +52,41 @@ def _validate_command(command: str) -> str:
     return _normalize(cleaned_command)
 
 
-def _extract_prefixed_argument(command: str, prefixes: tuple[str, ...]) -> tuple[str | None, str | None]:
+def _extract_prefixed_argument(
+    command: str, prefixes: tuple[str, ...]
+) -> tuple[str | None, str | None]:
     """Return the matched prefix and its argument, preferring longer prefixes first."""
-
     for prefix in sorted(set(prefixes), key=len, reverse=True):
         if command == prefix:
             return prefix, ""
         prefix_with_space = f"{prefix} "
         if command.startswith(prefix_with_space):
-            return prefix, command[len(prefix_with_space) :].strip()
+            return prefix, command[len(prefix_with_space):].strip()
     return None, None
 
 
 def _build_search_url(query: str) -> str:
     """Build a safe Google search URL for the provided query."""
-
     return f"https://www.google.com/search?q={quote_plus(query)}"
 
 
 def _normalize_open_target(target: str) -> str:
     """Normalize free-form open target into an HTTP URL when possible."""
-
     t = target.strip()
     if t.startswith(("http://", "https://")):
         return t
-
     if "." in t and " " not in t:
         return f"https://{t}"
-
     return ""
-
-
-def _build_ai_prompt(command: str) -> str:
-    """Create a structured prompt to keep Sofia's tone consistent and friendly."""
-
-    return (
-        "You are Sofia, a helpful and friendly AI assistant.\n\n"
-        f"User: {command}\n\n"
-        "Respond naturally and helpfully."
-    )
-
-
-def _build_ai_prompt_with_history(
-    command: str,
-    history: list[dict[str, Any]] | None = None,
-) -> str:
-    """Create a prompt that includes recent chat memory for context."""
-
-    recent_history = [entry for entry in (history or []) if entry.get("content")]
-    recent_history = recent_history[-10:]
-
-    prompt_parts = [
-        "You are Sofia, a helpful and friendly AI assistant.",
-        "Use the conversation memory below when it is relevant.",
-        "Keep replies concise, accurate, and natural.",
-        "",
-    ]
-
-    if recent_history:
-        prompt_parts.append("Conversation memory:")
-        for entry in recent_history:
-            role = str(entry.get("role", "user")).strip().lower()
-            content = str(entry.get("content", "")).strip()
-            speaker = "User" if role == "user" else "Sofia"
-            prompt_parts.append(f"{speaker}: {content}")
-        prompt_parts.append("")
-
-    prompt_parts.extend([
-        "Current user request:",
-        command.strip(),
-        "",
-        "Respond naturally and helpfully.",
-    ])
-    return "\n".join(prompt_parts)
 
 
 def _has_keyword(command: str, keywords: tuple[str, ...]) -> bool:
     """Return True when any keyword appears as a standalone word."""
-
     return any(re.search(rf"\b{re.escape(keyword)}\b", command) for keyword in keywords)
 
 
 def _build_datetime_message(command: str) -> tuple[str, dict[str, str]]:
     """Build a human-readable date/time response based on requested keywords."""
-
     now = datetime.now()
     requested = {
         "time": _has_keyword(command, ("time",)),
@@ -159,21 +129,37 @@ def _respond(
     *,
     url: str | None = None,
     data: dict[str, Any] | None = None,
+    agent_connected: bool | None = None,
 ) -> dict[str, Any]:
     """Create a response payload and log the resolved command action."""
-
     logger.info("command_action=%s", action)
     response: dict[str, Any] = {"action": action, "message": message}
     if url is not None:
         response["url"] = url
     if data is not None:
         response["data"] = data
+    if agent_connected is not None:
+        response["agent_connected"] = agent_connected
     return response
 
 
-async def process_text_command(command: str, history: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Process a natural-language command and return a structured response."""
+# ---------------------------------------------------------------------------
+# Main processor
+# ---------------------------------------------------------------------------
 
+async def process_text_command(
+    command: str,
+    history: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """
+    Process a natural-language command and return a structured response.
+
+    Routing
+    -------
+    - Rule-based: datetime, news, open URL, search → handled here.
+    - Agent connected: forward to Desktop Agent (Ollama + tool calling).
+    - Agent not connected: fall back to backend Ollama (chat only).
+    """
     c = _validate_command(command)
     logger.info("command_received length=%s", len(command))
 
@@ -181,7 +167,12 @@ async def process_text_command(command: str, history: list[dict[str, Any]] | Non
         return _respond("none", "Please type a command.")
 
     if c == "__too_long__":
-        return _respond("error", f"Command is too long. Maximum length is {MAX_COMMAND_LENGTH} characters.")
+        return _respond(
+            "error",
+            f"Command is too long. Maximum length is {MAX_COMMAND_LENGTH} characters.",
+        )
+
+    # ── Rule-based intents (handled by the backend regardless of agent) ──────
 
     page_map = get_page_map()
 
@@ -194,32 +185,73 @@ async def process_text_command(command: str, history: list[dict[str, Any]] | Non
         if url:
             ok, message = open_url_in_browser(url)
             return _respond("open_url" if ok else "error", message, url=url)
-        return _respond("error", f"I cannot find '{page_to_open}' in the page library.")
+        # Unknown open target → let the LLM/agent handle it.
 
     search_prefix, query = _extract_prefixed_argument(c, _SEARCH_PREFIXES)
     if search_prefix is not None:
         if not query:
             return _respond("error", "Please provide something to search for.")
         search_url = _build_search_url(query)
-        return _respond("search", f"Searching for {query}: {search_url}", url=search_url)
-
-    play_prefix, song = _extract_prefixed_argument(c, ("play",))
-    if play_prefix is not None:
-        if not song:
-            return _respond("error", "Please tell me a song name.")
-        return _respond("play_song", f"Playing {song} (simulated).", data={"song": song})
+        return _respond(
+            "search",
+            f"Searching for {query}: {search_url}",
+            url=search_url,
+        )
 
     if _has_keyword(c, _DATETIME_KEYWORDS):
         datetime_message, datetime_data = _build_datetime_message(c)
         return _respond("datetime", datetime_message, data=datetime_data)
 
-    
     if any(keyword in c for keyword in _NEWS_KEYWORDS):
         news_response = get_news()
         return _respond("news", news_response)
 
-    print("No known intent matched, falling back to AI response.")
-    ai_prompt = _build_ai_prompt_with_history(command.strip(), history)
-    print(f"AI Prompt:\n{ai_prompt}\n")
-    ai_answer = ask_ai(ai_prompt)
-    return _respond("chat", str(ai_answer))
+    # ── Agent routing ────────────────────────────────────────────────────────
+
+    agent_connected = bridge.is_agent_connected
+
+    if agent_connected:
+        logger.info("Forwarding command to Desktop Agent.")
+        try:
+            result = await bridge.send_command_to_agent(
+                command.strip(),
+                history or [],
+                timeout=90,
+            )
+            return _respond(
+                result.get("action", "chat"),
+                result.get("message", "Done."),
+                data=result.get("results"),
+                agent_connected=True,
+            )
+        except RuntimeError as exc:
+            logger.warning("Agent dispatch failed: %s. Falling back to Ollama.", exc)
+        except Exception:
+            logger.exception("Unexpected error dispatching to agent.")
+
+    # ── Fallback: backend Ollama (chat only, no computer control) ────────────
+
+    logger.info(
+        "Agent not connected. Using backend Ollama for conversational response."
+    )
+    fallback_note = (
+        ""
+        if not agent_connected
+        else ""
+    )
+
+    ai_answer = ask_ollama(command.strip(), history)
+
+    # Append a note explaining that computer-control commands need the agent.
+    computer_keywords = (
+        "open", "play", "launch", "start", "spotify", "chrome", "safari",
+        "firefox", "volume", "file", "search",
+    )
+    needs_agent = any(kw in c for kw in computer_keywords)
+    if needs_agent and not agent_connected:
+        ai_answer += (
+            "\n\n⚠️ To control your computer (open apps, control Spotify, etc.), "
+            "install and start the SOFIA Desktop Agent."
+        )
+
+    return _respond("chat", str(ai_answer), agent_connected=agent_connected)

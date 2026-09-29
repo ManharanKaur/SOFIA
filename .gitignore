@@ -1,5 +1,6 @@
 # Environment variables
 backend/.env
+desktop-agent/.env
 .env.local
 .env.*.local
 

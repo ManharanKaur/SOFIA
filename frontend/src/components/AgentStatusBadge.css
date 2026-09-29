@@ -1,0 +1,100 @@
+/*
+ * AgentStatusBadge.css
+ * --------------------
+ * BEM styles for the AgentStatusBadge component.
+ * No inline CSS; all visual states are handled via BEM modifiers.
+ */
+
+/* ── Block ─────────────────────────────────────────────────────────────── */
+
+.agent-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  cursor: default;
+  user-select: none;
+}
+
+/* ── Element: indicator dot ─────────────────────────────────────────────── */
+
+.agent-status-badge__indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ── Element: label text ────────────────────────────────────────────────── */
+
+.agent-status-badge__label {
+  white-space: nowrap;
+}
+
+/* ── Modifier: connected ────────────────────────────────────────────────── */
+
+.agent-status-badge--connected {
+  background-color: #dcfce7;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.agent-status-badge--connected .agent-status-badge__indicator {
+  background-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+  animation: agent-status-badge-pulse 2s infinite;
+}
+
+/* ── Modifier: disconnected ─────────────────────────────────────────────── */
+
+.agent-status-badge--disconnected {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+.agent-status-badge--disconnected .agent-status-badge__indicator {
+  background-color: #94a3b8;
+}
+
+/* ── Modifier: waiting for permission ───────────────────────────────────── */
+
+.agent-status-badge--waiting {
+  background-color: #fef9c3;
+  border-color: #fde047;
+  color: #854d0e;
+}
+
+.agent-status-badge--waiting .agent-status-badge__indicator {
+  background-color: #ca8a04;
+  animation: agent-status-badge-blink 1s steps(1) infinite;
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes agent-status-badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(22, 163, 74, 0);
+  }
+}
+
+@keyframes agent-status-badge-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}

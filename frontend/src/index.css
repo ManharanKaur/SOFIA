@@ -1,13 +1,20 @@
+/* index.css — Global design tokens and base reset */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   --bg-blue-50: #eff6ff;
   --primary-blue: #2563eb;
   --text-main: #111827;
   --text-muted: #6b7280;
   --white: #ffffff;
-  font-family: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -16,5 +23,12 @@
 body {
   background-color: var(--bg-blue-50);
   color: var(--text-main);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
 }

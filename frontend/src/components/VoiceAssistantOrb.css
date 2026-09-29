@@ -1,3 +1,13 @@
+/*
+ * VoiceAssistantOrb.css
+ * ---------------------
+ * BEM styles for the VoiceAssistantOrb component.
+ * Ripple animation delay is handled via CSS :nth-child selectors,
+ * not inline styles.
+ */
+
+/* ── Block ─────────────────────────────────────────────────────────────── */
+
 .voice-orb {
   display: flex;
   justify-content: center;
@@ -7,10 +17,15 @@
   position: relative;
 }
 
+/* ── Element: ripple container ──────────────────────────────────────────── */
+
 .voice-orb__ripples {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
+
+/* ── Element: ripple ring ───────────────────────────────────────────────── */
 
 .voice-orb__ripple {
   position: absolute;
@@ -22,8 +37,27 @@
   border-radius: 999px;
   border: 2px solid #3b6cff;
   opacity: 0;
-  animation: ripple-wave 2s infinite;
 }
+
+/* Ripple is only animated when the orb is in the --thinking modifier state */
+.voice-orb--thinking .voice-orb__ripple {
+  animation: voice-orb-ripple-wave 2s infinite;
+}
+
+/* Delay each ripple ring without using inline styles */
+.voice-orb--thinking .voice-orb__ripple:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.voice-orb--thinking .voice-orb__ripple:nth-child(2) {
+  animation-delay: 0.35s;
+}
+
+.voice-orb--thinking .voice-orb__ripple:nth-child(3) {
+  animation-delay: 0.7s;
+}
+
+/* ── Element: core dot ──────────────────────────────────────────────────── */
 
 .voice-orb__dot {
   width: 64px;
@@ -33,9 +67,19 @@
   box-shadow: 0 0 30px rgba(59, 108, 255, 0.45);
   position: relative;
   z-index: 2;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
-@keyframes ripple-wave {
+.voice-orb--thinking .voice-orb__dot {
+  box-shadow:
+    0 0 50px rgba(59, 108, 255, 0.65),
+    0 0 100px rgba(59, 108, 255, 0.2);
+  animation: voice-orb-dot-breathe 2s ease-in-out infinite;
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes voice-orb-ripple-wave {
   0% {
     transform: translate(-50%, -50%) scale(0.6);
     opacity: 0.45;
@@ -43,5 +87,15 @@
   100% {
     transform: translate(-50%, -50%) scale(2.4);
     opacity: 0;
+  }
+}
+
+@keyframes voice-orb-dot-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
   }
 }
